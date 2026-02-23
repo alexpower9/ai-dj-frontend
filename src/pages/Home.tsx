@@ -10,8 +10,10 @@ import {
   type TrackInfo as TrackInfoType,
   type TransitionInfo as TransitionInfoType,
 } from '../services/audioStream';
-import { Upload, MicVocal, Mic, MicOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, MicVocal, Mic, MicOff, ChevronLeft, ChevronRight, UserCircle, Play, Pause, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import SongUpload from '../components/SongUpload.tsx';
+import AccountPanel from './Account';
+import { useAuth } from '../context/AuthContext';
 
 type LibrarySong = {
   id?: string;
@@ -23,6 +25,8 @@ type LibrarySong = {
 };
 
 export default function Home() {
+  const { isAuthenticated, user } = useAuth();
+  const [showAccountPanel, setShowAccountPanel] = useState(false);
   const [audioService] = useState(() => new AudioStreamService());
   const [loading, setLoading] = useState(false);
 
@@ -70,6 +74,7 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [inputMode, setInputMode] = useState<"prompt" | "controls">("prompt");
   const [isPaused, setIsPaused] = useState(false);
+  const [volume, setVolume] = useState(1);
 
   // Voice input (browser speech-to-text)
   const SpeechRecognitionCtor: any =
@@ -104,6 +109,11 @@ export default function Home() {
   const [previousTrack, setPreviousTrack] =
     useState<TrackInfoType | null>(null);
   const [upNext, setUpNext] = useState<TrackInfoType[]>([]);
+
+  // Backend log state
+  const [backendLogs, setBackendLogs] = useState<string[]>([]);
+  const [rightPanelTab, setRightPanelTab] = useState<'queue' | 'logs'>('queue');
+  const logEndRef = useRef<HTMLDivElement>(null);
 
   const trackKey = (t: TrackInfoType | null) =>
     t ? `${t.title ?? ''}::${t.artist ?? ''}` : '';
@@ -140,8 +150,8 @@ export default function Home() {
         setLoading(false);
         setIsPaused(false);
 
-        // reset progress
-        setCurrentTime(0);
+        // reset progress (use start_offset for post-transition tracks)
+        setCurrentTime(track.startOffset || 0);
 
         // try to pull duration & transition points off the track if backend sends them
         const t: any = track as any;
@@ -210,6 +220,16 @@ export default function Home() {
           nowPlaying,
         );
         // don't clear here; onTrackStart will clean it up
+      },
+      onBackendLog: (lines) => {
+        setBackendLogs((prev) => {
+          const updated = [...prev, ...lines];
+          return updated.length > 200 ? updated.slice(-200) : updated;
+        });
+        // Auto-scroll to bottom
+        requestAnimationFrame(() => {
+          logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        });
       },
     });
 
@@ -418,6 +438,22 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-dark flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        {/* User account icon */}
+        <button
+          onClick={() => isAuthenticated && setShowAccountPanel(true)}
+          title={isAuthenticated ? `Signed in as ${user?.username}` : 'Guest — sign in to access your account'}
+          className={`absolute top-4 left-4 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+            isAuthenticated
+              ? 'bg-primary-600/30 border border-primary-500/50 hover:bg-primary-600/50 hover:shadow-neon-purple cursor-pointer'
+              : 'bg-white/5 border border-white/10 opacity-50 cursor-default'
+          }`}
+        >
+          <UserCircle className="w-5 h-5 text-white/80" />
+        </button>
+
+        {/* Account slide-over panel */}
+        <AccountPanel open={showAccountPanel} onClose={() => setShowAccountPanel(false)} />
+
         {/* Add Upload Button */}
         <button 
             onClick={() => setShowUploadModal(true)}
@@ -659,7 +695,7 @@ export default function Home() {
           >
             {/* Only show the toggle while in music mode */}
             {isPlaying && (
-              <div className="w-full max-w-2xl px-4 mb-2 flex items-center justify-center">
+              <div className="w-full max-w-2xl mx-auto px-4 mb-2 flex items-center justify-center">
                 <button
                   type="button"
                   onClick={() =>
@@ -692,16 +728,16 @@ export default function Home() {
 
             {/* Prompt mode */}
             {(!isPlaying || inputMode === 'prompt') && (
-              <div className="w-full">
+              <div className="w-full max-w-2xl mx-auto px-4">
                 {isListening && voicePreview && (
-                  <div className="w-full max-w-2xl px-4 mx-auto mb-2 text-xs text-white/60 truncate flex items-center gap-2">
+                  <div className="mb-2 text-xs text-white/60 truncate flex items-center gap-2">
                     <MicVocal className="w-4 h-4" />
                     <span>{voicePreview}</span>
                   </div>
                 )}
 
                 {!speechSupported && (
-                  <div className="w-full max-w-2xl px-4 mx-auto mb-2 text-xs text-white/40">
+                  <div className="mb-2 text-xs text-white/40">
                     Voice input isn’t supported in this browser (works best in Chrome).
                   </div>
                 )}
@@ -734,35 +770,66 @@ export default function Home() {
 
             {/* Controls mode */}
             {isPlaying && inputMode === 'controls' && (
-              <div className="w-full max-w-2xl px-4">
-                <div className="flex items-center justify-between rounded-2xl bg-white/5 border border-white/10 px-4 py-3 shadow-lg">
-                  <div className="text-xs text-white/60">
-                    {connectionStatus !== 'connected'
-                      ? 'Disconnected'
-                      : !isPlaying
-                      ? 'Nothing playing'
-                      : isPaused
-                      ? 'Paused'
-                      : 'Playing'}
-                  </div>
-
+              <div className="w-full max-w-2xl mx-auto px-4">
+                <div className="flex items-center gap-4 rounded-2xl bg-white/5 border border-white/10 px-5 py-3 shadow-lg">
+                  {/* Play / Pause */}
                   <button
                     type="button"
                     disabled={connectionStatus !== 'connected' || !isPlaying}
                     onClick={() => {
-                      const svc: any = audioService as any;
                       if (isPaused) {
-                        svc.resume?.();
+                        audioService.resume();
                         setIsPaused(false);
                       } else {
-                        svc.pause?.();
+                        audioService.pause();
                         setIsPaused(true);
                       }
                     }}
-                    className="rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium transition-colors"
+                    className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                    title={isPaused ? 'Resume' : 'Pause'}
                   >
-                    {isPaused ? 'Play' : 'Pause'}
+                    {isPaused ? <Play className="w-4 h-4 ml-0.5" /> : <Pause className="w-4 h-4" />}
                   </button>
+
+                  {/* Next (quick transition) */}
+                  <button
+                    type="button"
+                    disabled={connectionStatus !== 'connected' || !isPlaying}
+                    onClick={() => handleSubmit('skip to next song')}
+                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                    title="Skip to next song"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </button>
+
+                  {/* Volume slider */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newVol = volume > 0 ? 0 : 1;
+                        setVolume(newVol);
+                        audioService.setVolume(newVol);
+                      }}
+                      className="text-white/60 hover:text-white transition-colors shrink-0 cursor-pointer"
+                      title={volume === 0 ? 'Unmute' : 'Mute'}
+                    >
+                      {volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={volume}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        setVolume(v);
+                        audioService.setVolume(v);
+                      }}
+                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-primary-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary-400"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -779,14 +846,74 @@ export default function Home() {
 
         {/* Right column: full queue */}
         {isPlaying && (
-          <aside className="w-full lg:w-[360px] flex-shrink-0">
-            <div className="h-full bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl p-4">
-              <QueuePanel
-                currentTrack={currentTrack}
-                previousTrack={previousTrack}
-                upNext={upNext}
-                onReorder={(newOrder) => audioService.sendReorderQueue(newOrder)}
-              />
+          <aside className="w-full lg:w-[360px] flex-shrink-0 flex flex-col">
+            <div className="h-full bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl p-4 flex flex-col">
+              {/* Tab toggle */}
+              <div className="flex mb-3 bg-black/20 rounded-lg p-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab('queue')}
+                  className={`flex-1 py-1.5 text-[10px] uppercase tracking-widest font-medium rounded-md transition-all cursor-pointer ${
+                    rightPanelTab === 'queue'
+                      ? 'bg-white/10 text-white'
+                      : 'text-white/40 hover:text-white/60'
+                  }`}
+                >
+                  Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab('logs')}
+                  className={`flex-1 py-1.5 text-[10px] uppercase tracking-widest font-medium rounded-md transition-all cursor-pointer ${
+                    rightPanelTab === 'logs'
+                      ? 'bg-white/10 text-white'
+                      : 'text-white/40 hover:text-white/60'
+                  }`}
+                >
+                  Logs
+                </button>
+              </div>
+
+              {/* Queue view */}
+              {rightPanelTab === 'queue' && (
+                <QueuePanel
+                  currentTrack={currentTrack}
+                  previousTrack={previousTrack}
+                  upNext={upNext}
+                  onReorder={(newOrder) => audioService.sendReorderQueue(newOrder)}
+                />
+              )}
+
+              {/* Logs view */}
+              {rightPanelTab === 'logs' && (
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="flex-1 overflow-y-auto library-scroll rounded-lg bg-black/30 border border-white/5 p-3 font-mono text-[11px] leading-relaxed text-white/60">
+                    {backendLogs.length === 0 ? (
+                      <p className="text-white/20 italic">No logs yet...</p>
+                    ) : (
+                      backendLogs.map((line, i) => (
+                        <div
+                          key={i}
+                          className={`py-0.5 ${
+                            line.includes('ERROR') || line.includes('Error')
+                              ? 'text-red-400'
+                              : line.includes('[WS]')
+                              ? 'text-neon-cyan/70'
+                              : line.includes('[QUEUE]')
+                              ? 'text-neon-green/70'
+                              : line.includes('[TRANSITION]') || line.includes('[DEBUG]')
+                              ? 'text-neon-purple/70'
+                              : ''
+                          }`}
+                        >
+                          {line}
+                        </div>
+                      ))
+                    )}
+                    <div ref={logEndRef} />
+                  </div>
+                </div>
+              )}
             </div>
           </aside>
         )}

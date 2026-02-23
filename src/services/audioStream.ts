@@ -5,6 +5,7 @@ export interface TrackInfo {
   key: string;
   duration: number;
   sampleRate: number;
+  startOffset?: number;
 }
 
 // Match backend TransitionPlan.to_dict() keys
@@ -34,6 +35,7 @@ export interface AudioServiceCallbacks {
   onTransitionPlanned?: (transition: TransitionInfo) => void;
   onTransitionStart?: (transition: TransitionInfo) => void;
   onTransitionComplete?: (nowPlaying: string) => void;
+  onBackendLog?: (lines: string[]) => void;
 }
 
 // Audio queue item tagged with track ID
@@ -58,6 +60,7 @@ export class AudioStreamService {
   // Web Audio API components
   private audioContext: AudioContext | null = null;
   private analyserNode: AnalyserNode | null = null;
+  private gainNode: GainNode | null = null;
   private sampleRate: number = 44100;
   private isPlaying: boolean = false;
   private isPaused = false;
@@ -161,11 +164,15 @@ export class AudioStreamService {
     if (!this.audioContext) {
       this.audioContext = new AudioContext();
       
+      // Create gain node for volume control
+      this.gainNode = this.audioContext.createGain();
+      this.gainNode.connect(this.audioContext.destination);
+
       // Create analyser node for visualization
       this.analyserNode = this.audioContext.createAnalyser();
       this.analyserNode.fftSize = 256;
       this.analyserNode.smoothingTimeConstant = 0.8;
-      this.analyserNode.connect(this.audioContext.destination);
+      this.analyserNode.connect(this.gainNode);
       
       console.log('🎵 Audio context and analyser initialized');
     }
@@ -190,7 +197,8 @@ export class AudioStreamService {
           bpm: message.track.bpm,
           key: message.track.key,
           duration: message.track.duration,
-          sampleRate: this.sampleRate
+          sampleRate: this.sampleRate,
+          startOffset: message.track.start_offset || 0
         };
         
         // Store track info
@@ -284,6 +292,12 @@ export class AudioStreamService {
         console.error('❌ Server error:', message.message);
         if (this.callbacks.onError) {
           this.callbacks.onError(message.message);
+        }
+        break;
+
+      case 'backend_log':
+        if (this.callbacks.onBackendLog && message.lines) {
+          this.callbacks.onBackendLog(message.lines);
         }
         break;
 
@@ -519,6 +533,8 @@ export class AudioStreamService {
     
     if (this.analyserNode) {
       source.connect(this.analyserNode);
+    } else if (this.gainNode) {
+      source.connect(this.gainNode);
     } else {
       source.connect(this.audioContext.destination);
     }
@@ -629,6 +645,16 @@ resume(): void {
   }
 }
 
+  setVolume(value: number): void {
+    if (this.gainNode) {
+      this.gainNode.gain.value = Math.max(0, Math.min(1, value));
+    }
+  }
+
+  getVolume(): number {
+    return this.gainNode ? this.gainNode.gain.value : 1;
+  }
+
   getPendingTransition(): TransitionInfo | null {
     return this.pendingTransitionInfo;
   }
@@ -648,6 +674,7 @@ resume(): void {
       this.audioContext.close();
       this.audioContext = null;
       this.analyserNode = null;
+      this.gainNode = null;
     }
     
     if (this.ws) {
