@@ -349,6 +349,7 @@ export class AudioStreamService {
             case "unknown":
             case "stopped":
             case "quick_transition_scheduled":
+            case "force_skip_initiated":
                 console.log(
                     `ℹ️ Backend responded with ${message.type}:`,
                     message.message,
