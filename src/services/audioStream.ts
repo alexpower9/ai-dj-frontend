@@ -117,6 +117,7 @@ export class AudioStreamService {
                 console.log(" webSocket connected successfully");
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
+                this.ws!.send(JSON.stringify({ type: "reset" }));
 
                 // Initialize audio context
                 this.initAudioContext();
