@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import PromptBox from "../components/PromptBox";
 import Waveform from "../components/Waveform";
 import PlaybackTimeline from "../components/PlaybackTimeline";
@@ -25,7 +26,6 @@ import {
   VolumeX,
 } from "lucide-react";
 import SongUpload from "../components/SongUpload.tsx";
-import AccountPanel from "./Account";
 import { useAuth } from "../context/AuthContext";
 
 type LibrarySong = {
@@ -38,8 +38,9 @@ type LibrarySong = {
 };
 
 export default function Home() {
-  const { isAuthenticated, user } = useAuth();
-  const [showAccountPanel, setShowAccountPanel] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated, token, user } = useAuth();
   const [audioService] = useState(() => new AudioStreamService());
   const [loading, setLoading] = useState(false);
 
@@ -52,7 +53,8 @@ export default function Home() {
     setLibraryLoading(true);
     setLibraryError(null);
     try {
-      const res = await fetch("/api/library");
+      const url = token ? `/api/library?token=${encodeURIComponent(token)}` : "/api/library";
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`Library fetch failed: ${res.status}`);
       const data: any = await res.json();
       const songs = Array.isArray(data)
@@ -129,6 +131,23 @@ export default function Home() {
   const [backendLogs, setBackendLogs] = useState<string[]>([]);
   const [rightPanelTab, setRightPanelTab] = useState<"queue" | "logs">("queue");
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Toast notifications
+  const [toasts, setToasts] = useState<
+    { id: number; message: string; type: "error" | "info" | "success" }[]
+  >([]);
+  const toastIdRef = useRef(0);
+
+  const addToast = useCallback(
+    (message: string, type: "error" | "info" | "success" = "info") => {
+      const id = ++toastIdRef.current;
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 5000);
+    },
+    [],
+  );
 
   const trackKey = (t: TrackInfoType | null) =>
     t ? `${t.title ?? ""}::${t.artist ?? ""}` : "";
@@ -215,6 +234,7 @@ export default function Home() {
       },
       onError: (message) => {
         console.error("Audio error:", message);
+        addToast(message, "error");
         setLoading(false);
       },
       onInfo: (_type, _message) => {
@@ -259,12 +279,20 @@ export default function Home() {
     // Connect when component mounts
     const connectWebSocket = async () => {
       try {
-        await audioService.connect();
+        await audioService.connect(token);
         setConnectionStatus("connected");
 
         // Get analyser node after connection
         const analyser = audioService.getAnalyserNode();
         setAnalyserNode(analyser);
+
+        // If navigated here with a setlist to load, send it to the backend
+        const setlistId = (location.state as any)?.setlistId;
+        if (setlistId) {
+          audioService.sendMessage({ type: "load_setlist", setlist_id: setlistId });
+          // Clear the state so it doesn't reload on refresh
+          window.history.replaceState({}, document.title);
+        }
       } catch (error) {
         console.error("Failed to connect to WebSocket:", error);
         setConnectionStatus("disconnected");
@@ -463,9 +491,32 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-dark flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* Toast notifications */}
+      {toasts.length > 0 && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto px-5 py-3 rounded-xl shadow-lg backdrop-blur-md text-sm font-medium animate-fade-in-down max-w-md text-center ${
+                toast.type === "error"
+                  ? "bg-red-500/90 text-white"
+                  : toast.type === "success"
+                    ? "bg-green-500/90 text-white"
+                    : "bg-white/15 text-white border border-white/20"
+              }`}
+              onClick={() =>
+                setToasts((prev) => prev.filter((t) => t.id !== toast.id))
+              }
+            >
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* User account icon */}
       <button
-        onClick={() => isAuthenticated && setShowAccountPanel(true)}
+        onClick={() => isAuthenticated && navigate('/account')}
         title={
           isAuthenticated
             ? `Signed in as ${user?.username}`
@@ -479,12 +530,6 @@ export default function Home() {
       >
         <UserCircle className="w-5 h-5 text-white/80" />
       </button>
-
-      {/* Account slide-over panel */}
-      <AccountPanel
-        open={showAccountPanel}
-        onClose={() => setShowAccountPanel(false)}
-      />
 
       {/* Add Upload Button */}
       <button
@@ -505,6 +550,7 @@ export default function Home() {
               ✕ Close
             </button>
             <SongUpload
+              token={token}
               onUploadComplete={(filename) => {
                 console.log("Uploaded:", filename);
                 setShowUploadModal(false);
@@ -716,7 +762,7 @@ export default function Home() {
             </div>
 
             {/* Track info */}
-            <div className="mb-6">
+            <div className="w-full max-w-2xl px-4 mb-6 text-center">
               <TrackInfo track={currentTrack} />
             </div>
 
@@ -957,6 +1003,9 @@ export default function Home() {
                   upNext={upNext}
                   onReorder={(newOrder) =>
                     audioService.sendReorderQueue(newOrder)
+                  }
+                  onRemove={(index) =>
+                    audioService.sendRemoveFromQueue(index)
                   }
                 />
               )}

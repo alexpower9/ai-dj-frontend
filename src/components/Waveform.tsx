@@ -39,41 +39,50 @@ export default function Waveform({ analyserNode, isPlaying }: WaveformProps) {
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
+      // Always reset shadow state at the start of each frame
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+
       if (analyserNode && isPlaying) {
-        // Get frequency data
+        // Get frequency data — skip bin 0 (DC offset, always near-max and static)
         const bufferLength = analyserNode.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         analyserNode.getByteFrequencyData(dataArray);
 
-        // Draw frequency bars as a mirrored waveform
-        const barWidth = width / bufferLength * 2.5;
-        const gap = 2;
+        // Use a fixed bar count that fills the canvas evenly
+        const numBars = 80;
+        const startBin = 1; // skip DC offset
+        const endBin = Math.floor(bufferLength * 0.75); // skip ultra-high freq noise
+        const binStep = (endBin - startBin) / numBars;
+        const gap = 3;
+        const barWidth = (width - gap * (numBars - 1)) / numBars;
+        const roundedRadius = Math.min(barWidth / 2, 4);
 
+        // Apply glow before drawing so it renders on the bars
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#8b5cf6';
         ctx.fillStyle = gradient;
 
-        for (let i = 0; i < bufferLength; i++) {
-          const barHeight = (dataArray[i] / 255) * (height * 0.8);
+        for (let i = 0; i < numBars; i++) {
+          const bin = Math.floor(startBin + i * binStep);
+          // Cap bar height so bars never touch the canvas edges
+          const barHeight = (dataArray[bin] / 255) * (height * 0.75);
           const x = i * (barWidth + gap);
-          
-          if (x > width) break;
 
-          // Draw bar going up
-          const roundedRadius = Math.min(barWidth / 2, 4);
-          
           // Top half (going up from center)
           ctx.beginPath();
           ctx.roundRect(x, centerY - barHeight / 2, barWidth, barHeight / 2, [roundedRadius, roundedRadius, 0, 0]);
           ctx.fill();
-          
+
           // Bottom half (going down from center, mirrored)
           ctx.beginPath();
           ctx.roundRect(x, centerY, barWidth, barHeight / 2, [0, 0, roundedRadius, roundedRadius]);
           ctx.fill();
         }
 
-        // Add glow effect
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#8b5cf6';
+        // Reset shadow after drawing to avoid bleeding into next frame
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
       } else {
         // Idle animation - subtle wave
         idlePhase += 0.02;
@@ -97,6 +106,8 @@ export default function Waveform({ analyserNode, isPlaying }: WaveformProps) {
           }
         }
         ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
       }
 
       animationRef.current = requestAnimationFrame(draw);

@@ -16,7 +16,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, X } from 'lucide-react';
 import type { TrackInfo as TrackInfoType } from '../services/audioStream';
 
 type Props = {
@@ -24,6 +24,7 @@ type Props = {
   previousTrack: TrackInfoType | null;
   upNext: TrackInfoType[];
   onReorder: (newOrder: number[]) => void;
+  onRemove: (index: number) => void;
 };
 
 function formatTitle(raw: string | undefined): string {
@@ -38,7 +39,7 @@ function formatTitle(raw: string | undefined): string {
     .join(' ');
 }
 
-function SortableQueueItem({ id, track, index }: { id: string; track: TrackInfoType; index: number }) {
+function SortableQueueItem({ id, track, index, onRemove }: { id: string; track: TrackInfoType; index: number; onRemove: (index: number) => void }) {
   const {
     attributes,
     listeners,
@@ -58,7 +59,7 @@ function SortableQueueItem({ id, track, index }: { id: string; track: TrackInfoT
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${
+      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 group ${
         isDragging ? 'bg-white/10 shadow-lg' : 'hover:bg-white/5'
       }`}
     >
@@ -77,14 +78,18 @@ function SortableQueueItem({ id, track, index }: { id: string; track: TrackInfoT
           {formatTitle(track.artist)}
         </p>
       </div>
-      <span className="flex-shrink-0 text-[10px] text-slate-500 tabular-nums">
-        {index + 1}
-      </span>
+      <button
+        onClick={() => onRemove(index)}
+        className="flex-shrink-0 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+        aria-label="Remove from queue"
+      >
+        <X size={13} />
+      </button>
     </div>
   );
 }
 
-export default function QueuePanel({ currentTrack, previousTrack, upNext, onReorder }: Props) {
+export default function QueuePanel({ currentTrack, previousTrack, upNext, onReorder, onRemove }: Props) {
   const [localUpNext, setLocalUpNext] = useState<TrackInfoType[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -185,6 +190,7 @@ export default function QueuePanel({ currentTrack, previousTrack, upNext, onReor
                       id={itemIds[i]}
                       track={track}
                       index={i}
+                      onRemove={onRemove}
                     />
                   ))}
                 </div>

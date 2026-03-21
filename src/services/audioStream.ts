@@ -101,7 +101,7 @@ export class AudioStreamService {
         this.callbacks = callbacks;
     }
 
-    connect(): Promise<void> {
+    connect(token?: string | null): Promise<void> {
         return new Promise((resolve, reject) => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 console.log("WebSocket already connected");
@@ -111,7 +111,10 @@ export class AudioStreamService {
 
             const wsBase = import.meta.env.VITE_WS_URL
                 ?? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
-            this.ws = new WebSocket(`${wsBase}/api/ws/audio`);
+            const wsUrl = token
+                ? `${wsBase}/api/ws/audio?token=${encodeURIComponent(token)}`
+                : `${wsBase}/api/ws/audio`;
+            this.ws = new WebSocket(wsUrl);
             this.ws.onopen = () => {
                 console.log(" webSocket connected successfully");
                 this.isConnected = true;
@@ -279,6 +282,15 @@ export class AudioStreamService {
                         (Array.isArray(message.upcoming) && message.upcoming) ||
                         [];
                     this.callbacks.onQueueUpdate(raw);
+                }
+                // Surface failed songs as error notifications
+                if (message.type === "queue_update") {
+                    const failed = message.failed as string[] | undefined;
+                    if (failed && failed.length > 0 && this.callbacks.onError) {
+                        this.callbacks.onError(
+                            `Songs not found: ${failed.join(", ")}`,
+                        );
+                    }
                 }
                 break;
             // NEW: Transition messages
@@ -773,6 +785,20 @@ export class AudioStreamService {
         }
     }
 
+    sendRemoveFromQueue(index: number) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(
+                JSON.stringify({ type: "remove_from_queue", index }),
+            );
+        }
+    }
+
+    sendMessage(data: Record<string, unknown>) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(data));
+        }
+    }
+
     getConnectionStatus(): boolean {
         return this.isConnected;
     }
@@ -801,6 +827,10 @@ export class AudioStreamService {
                 console.warn("[AudioStreamService] pause failed", e);
             });
             this.isPaused = true;
+
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: "pause" }));
+            }
         }
     }
 
@@ -812,6 +842,10 @@ export class AudioStreamService {
                 console.warn("[AudioStreamService] resume failed", e);
             });
             this.isPaused = false;
+
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: "resume" }));
+            }
         }
     }
 

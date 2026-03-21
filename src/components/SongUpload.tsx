@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Upload, Music, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { Upload, Music, CheckCircle, XCircle, Loader, Lock } from 'lucide-react';
 
 interface UploadStatus {
   status: 'idle' | 'uploading' | 'success' | 'error';
@@ -11,9 +11,10 @@ interface UploadStatus {
 
 interface SongUploadProps {
   onUploadComplete?: (filename: string) => void;
+  token: string | null;
 }
 
-export default function SongUpload({ onUploadComplete }: SongUploadProps) {
+export default function SongUpload({ onUploadComplete, token }: SongUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [artist, setArtist] = useState('');
   const [title, setTitle] = useState('');
@@ -100,6 +101,7 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
 
       const response = await fetch('/api/upload/song', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 
@@ -138,6 +140,19 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
   };
 
   const isValidFormat = artist && title;
+
+  // Guest / unauthenticated lock screen
+  if (!token) {
+    return (
+      <div className="w-full max-w-2xl mx-auto p-8 bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 flex flex-col items-center justify-center gap-4 text-center">
+        <Lock className="w-12 h-12 text-slate-400" />
+        <h2 className="text-2xl font-bold text-white">Sign In to Upload Songs</h2>
+        <p className="text-slate-400 max-w-sm">
+          Personal song uploads are tied to your account. Create an account or sign in to add your own songs to the DJ.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-2xl mx-auto p-6 bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 relative">

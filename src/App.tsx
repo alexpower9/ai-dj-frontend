@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Home from './pages/Home';
 import Login from './pages/Login';
+import AccountPage from './pages/Account';
+import Mixer from './pages/Mixer';
 
 function AppRoutes() {
   const { isAuthenticated, isGuest, isLoading } = useAuth();
@@ -20,6 +22,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={hasAccess ? <Navigate to="/dj" replace /> : <Login />} />
       <Route path="/dj" element={hasAccess ? <Home /> : <Navigate to="/login" replace />} />
+      <Route path="/account" element={isAuthenticated ? <AccountPage /> : <Navigate to="/dj" replace />} />
+      <Route path="/mixer" element={isAuthenticated ? <Mixer /> : <Navigate to="/dj" replace />} />
       <Route path="*" element={<Navigate to={hasAccess ? "/dj" : "/login"} replace />} />
     </Routes>
   );
