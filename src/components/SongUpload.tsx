@@ -1,11 +1,13 @@
-<<<<<<< HEAD
-import { useState, useCallback } from 'react';
-import { Upload, Music, CheckCircle, XCircle, Loader, Lock } from 'lucide-react';
-=======
-import { useState, useCallback } from "react";
-import { Upload, Music, CheckCircle, XCircle, Loader } from "lucide-react";
+import { useCallback, useState } from "react";
+import {
+    CheckCircle,
+    Loader,
+    Lock,
+    Music,
+    Upload,
+    XCircle,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
->>>>>>> 3669155a0c07c0e3e64f5d18b93f14bbc66c6a2b
 
 interface UploadStatus {
     status: "idle" | "uploading" | "success" | "error";
@@ -16,23 +18,17 @@ interface UploadStatus {
 }
 
 interface SongUploadProps {
-<<<<<<< HEAD
-  onUploadComplete?: (filename: string) => void;
-  token: string | null;
-}
-
-export default function SongUpload({ onUploadComplete, token }: SongUploadProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [artist, setArtist] = useState('');
-  const [title, setTitle] = useState('');
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>({ status: 'idle' });
-  const [isDragging, setIsDragging] = useState(false);
-=======
     onUploadComplete?: (filename: string) => void;
+    token?: string | null;
 }
 
-export default function SongUpload({ onUploadComplete }: SongUploadProps) {
-    const { token } = useAuth();
+export default function SongUpload({
+    onUploadComplete,
+    token,
+}: SongUploadProps) {
+    const { token: authToken } = useAuth();
+    const uploadToken = token ?? authToken;
+
     const [file, setFile] = useState<File | null>(null);
     const [artist, setArtist] = useState("");
     const [title, setTitle] = useState("");
@@ -40,12 +36,12 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
         status: "idle",
     });
     const [isDragging, setIsDragging] = useState(false);
->>>>>>> 3669155a0c07c0e3e64f5d18b93f14bbc66c6a2b
 
     const handleFileChange = (selectedFile: File | null) => {
         if (!selectedFile) return;
 
-        if (!selectedFile.name.endsWith(".wav")) {
+        if (!selectedFile.name.toLowerCase().endsWith(".wav")) {
+            setFile(null);
             setUploadStatus({
                 status: "error",
                 message: "Only .wav files are supported",
@@ -70,8 +66,11 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
+
         const droppedFile = e.dataTransfer.files[0];
-        if (droppedFile) handleFileChange(droppedFile);
+        if (droppedFile) {
+            handleFileChange(droppedFile);
+        }
     }, []);
 
     const handleUpload = async () => {
@@ -82,6 +81,7 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
             });
             return;
         }
+
         if (!title.trim()) {
             setUploadStatus({
                 status: "error",
@@ -89,6 +89,7 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
             });
             return;
         }
+
         if (!artist.trim()) {
             setUploadStatus({
                 status: "error",
@@ -100,8 +101,7 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
         setUploadStatus({ status: "uploading" });
 
         try {
-            // Rename the file client-side to "Song-Title_Artist-Name.wav" (no spaces)
-            const sanitize = (s: string) => s.trim().replace(/\s+/g, "-");
+            const sanitize = (value: string) => value.trim().replace(/\s+/g, "-");
             const renamedFilename = `${sanitize(title)}_${sanitize(artist)}.wav`;
             const renamedFile = new File([file], renamedFilename, {
                 type: file.type,
@@ -112,24 +112,20 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
 
             const response = await fetch("/api/upload/song", {
                 method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                headers: uploadToken
+                    ? { Authorization: `Bearer ${uploadToken}` }
+                    : {},
                 body: formData,
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || "Upload failed");
+                const error = await response.json().catch(() => null);
+                throw new Error(
+                    error?.detail ?? error?.message ?? "Upload failed",
+                );
             }
 
-<<<<<<< HEAD
-      const response = await fetch('/api/upload/song', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-=======
             const result = await response.json();
->>>>>>> 3669155a0c07c0e3e64f5d18b93f14bbc66c6a2b
 
             setUploadStatus({
                 status: "success",
@@ -139,11 +135,8 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                 segmentCount: result.segment_count,
             });
 
-            if (onUploadComplete) {
-                onUploadComplete(result.filename);
-            }
+            onUploadComplete?.(result.filename);
 
-            // Reset after 3 seconds
             setTimeout(() => {
                 setFile(null);
                 setArtist("");
@@ -159,7 +152,22 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
         }
     };
 
-    const isReady = file && title.trim() && artist.trim();
+    const isReady = Boolean(file && title.trim() && artist.trim());
+
+    if (!uploadToken) {
+        return (
+            <div className="w-full max-w-2xl mx-auto p-8 bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 flex flex-col items-center justify-center gap-4 text-center">
+                <Lock className="w-12 h-12 text-slate-400" />
+                <h2 className="text-2xl font-bold text-white">
+                    Sign In to Upload Songs
+                </h2>
+                <p className="text-slate-400 max-w-sm">
+                    Personal song uploads are tied to your account. Create an
+                    account or sign in to add your own songs to the DJ.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full max-w-2xl mx-auto p-6 bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 relative">
@@ -168,7 +176,6 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                 Upload New Song
             </h2>
 
-            {/* Song Title & Artist inputs */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
                 <div className="flex flex-col gap-1.5">
                     <label
@@ -187,27 +194,6 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                     />
                 </div>
 
-<<<<<<< HEAD
-  // Guest / unauthenticated lock screen
-  if (!token) {
-    return (
-      <div className="w-full max-w-2xl mx-auto p-8 bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 flex flex-col items-center justify-center gap-4 text-center">
-        <Lock className="w-12 h-12 text-slate-400" />
-        <h2 className="text-2xl font-bold text-white">Sign In to Upload Songs</h2>
-        <p className="text-slate-400 max-w-sm">
-          Personal song uploads are tied to your account. Create an account or sign in to add your own songs to the DJ.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full max-w-2xl mx-auto p-6 bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 relative">
-      <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-        <Music className="w-6 h-6" />
-        Upload New Song
-      </h2>
-=======
                 <div className="flex flex-col gap-1.5">
                     <label
                         htmlFor="song-artist"
@@ -225,9 +211,7 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                     />
                 </div>
             </div>
->>>>>>> 3669155a0c07c0e3e64f5d18b93f14bbc66c6a2b
 
-            {/* Filename preview */}
             {(title.trim() || artist.trim()) && (
                 <div className="mb-4 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-400 flex items-center gap-2">
                     <Music className="w-3.5 h-3.5 shrink-0 text-gray-500" />
@@ -249,24 +233,21 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                 </div>
             )}
 
-            {/* File drop zone */}
             <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 className={`
-          border-2 border-dashed rounded-xl p-8 mb-6 text-center transition-all
-          ${isDragging ? "border-primary-500 bg-primary-500/10" : "border-gray-600 hover:border-gray-500"}
-          ${file ? "bg-green-500/10 border-green-500" : ""}
-        `}
+                    border-2 border-dashed rounded-xl p-8 mb-6 text-center transition-all
+                    ${isDragging ? "border-primary-500 bg-primary-500/10" : "border-gray-600 hover:border-gray-500"}
+                    ${file ? "bg-green-500/10 border-green-500" : ""}
+                `}
             >
                 <input
                     type="file"
                     id="file-upload"
                     accept=".wav"
-                    onChange={(e) =>
-                        handleFileChange(e.target.files?.[0] || null)
-                    }
+                    onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
                     className="hidden"
                 />
 
@@ -301,7 +282,6 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                 </label>
             </div>
 
-            {/* Upload button */}
             <button
                 onClick={handleUpload}
                 disabled={!isReady || uploadStatus.status === "uploading"}
@@ -320,7 +300,6 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                 )}
             </button>
 
-            {/* Status messages */}
             {uploadStatus.status !== "idle" && uploadStatus.message && (
                 <div
                     className={`mt-4 p-4 rounded-lg flex items-start gap-3 ${
@@ -351,9 +330,9 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                         >
                             {uploadStatus.status === "uploading" &&
                                 "Processing..."}
-                            {uploadStatus.status === "success" && "✓ Success!"}
+                            {uploadStatus.status === "success" && "Success!"}
                             {uploadStatus.status === "error" &&
-                                "✗ Upload Failed"}
+                                "Upload Failed"}
                         </p>
                         <p className="text-gray-300 text-sm mt-1">
                             {uploadStatus.message}
@@ -361,16 +340,14 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
                         {uploadStatus.status === "success" &&
                             uploadStatus.segmentCount && (
                                 <p className="text-gray-400 text-sm mt-1">
-                                    Detected {uploadStatus.segmentCount}{" "}
-                                    segments in {uploadStatus.title} by{" "}
-                                    {uploadStatus.artist}
+                                    Detected {uploadStatus.segmentCount} segments
+                                    in {` ${uploadStatus.title} by ${uploadStatus.artist}`}
                                 </p>
                             )}
                     </div>
                 </div>
             )}
 
-            {/* Info box */}
             <div className="mt-6 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
                 <p className="text-purple-300 text-sm">
                     <strong>How it works:</strong> Your song will be analyzed by
@@ -381,4 +358,3 @@ export default function SongUpload({ onUploadComplete }: SongUploadProps) {
         </div>
     );
 }
-
